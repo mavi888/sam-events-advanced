@@ -1,0 +1,388 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Timeout: 10
+
+Resources:
+
+  ### Event Bus
+  AppEventBus:
+    Type: AWS::Events::EventBus
+    Properties: 
+      Name: !Sub AppEventBus-${AWS::StackName}
+
+  ### Event Sourcing / Event Store
+  EventStoreTable: # customerId, timestamp, eventType, eventDetail
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "who"
+          AttributeType: "S"
+        - AttributeName: "timeWhat"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "who" # C + customerId
+          KeyType: "HASH"
+        - AttributeName: "timeWhat" # Timestamp + event type
+          KeyType: "RANGE"
+
+  EventStoreFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: event-store/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          STORE_TABLE: !Ref EventStoreTable
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLInsert
+            Resource: !GetAtt EventStoreTable.Arn
+      Events:
+        StoreEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern: {"source": [{"prefix": ""}]} # To match all events
+            DeadLetterConfig:
+              Type: SQS
+
+  ## Helpers layers
+  HelpersLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SAM-Events-Advance-Helpers
+      Description: Layer that will be shared across multiple microservices
+      LicenseInfo: 'Available under the MIT license.'
+      ContentUri: ./helpers-layer
+      CompatibleRuntimes:
+        - nodejs14.x
+
+  ### Order
+
+  OrderTable: # customerId, orderId, status (CREATED, RESERVED, PAID, DELIVERING, DELIVERED, CANCELED), itemId, itemPrice, deliveryPrice, totalPrice, paymentId, deliveryAddress, orderDate (timestamp), updateDate (timestamp)
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "customerId"
+          AttributeType: "S"
+        - AttributeName: "orderId"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "customerId"
+          KeyType: "HASH"
+        - AttributeName: "orderId" # Timestamp with ms precision
+          KeyType: "RANGE"
+
+  OrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: order/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Layers:
+        - !Ref HelpersLayer
+      Environment:
+        Variables:
+          ORDER_TABLE: !Ref OrderTable
+          EVENT_BUS: !Ref AppEventBus
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+              - dynamodb:PartiQLInsert
+              - dynamodb:PartiQLUpdate
+              - dynamodb:PartiQLDelete
+            Resource: !GetAtt OrderTable.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Events:
+        OrderEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern:
+              detail-type:
+              - OrderCreate
+              - PaymentMade
+              - PaymentFailed
+              - PaymentCanceled
+              - DeliveryStarted
+              - DeliveryWasDelivered
+              - DeliveryWasCanceled
+            DeadLetterConfig:
+              Type: SQS
+        OrderGet:
+          Type: HttpApi
+          Properties:
+            Path: /order/{action}/{customerId}/{what}
+            Method: GET
+        OrderPost:
+          Type: HttpApi
+          Properties:
+            Path: /order/{action}
+            Method: POST
+
+  ### Inventory
+
+  InventoryTable: # itemId, description, image (S3 URL in the format “s3://…”), price, available, reserved
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "itemId"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "itemId"
+          KeyType: "HASH"
+
+  InventoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: inventory/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          INVENTORY_TABLE: !Ref InventoryTable
+          EVENT_BUS: !Ref AppEventBus
+      Layers:
+        - !Ref HelpersLayer
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+              - dynamodb:PartiQLInsert
+              - dynamodb:PartiQLUpdate
+              - dynamodb:PartiQLDelete
+            Resource: !GetAtt InventoryTable.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Events:
+        InventoryEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern:
+              detail-type:
+              - OrderCreated
+              - OrderCanceled
+              - ItemReserved
+              - PaymentMade
+              - PaymentFailed
+            DeadLetterConfig:
+              Type: SQS
+
+  ### Payment
+
+  PaymentTable: # paymentId, paymentMethod (CREDIT_CARD for all in this simulation), amount, status (PAID, CANCELED)
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "paymentId"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "paymentId"
+          KeyType: "HASH"
+
+  PaymentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: payment/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          PAYMENT_TABLE: !Ref PaymentTable
+          PAYMENT_FAIL_PROBABILITY: 0.2 # Between 0 and 1
+          EVENT_BUS: !Ref AppEventBus
+      Layers:
+        - !Ref HelpersLayer
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+              - dynamodb:PartiQLInsert
+              - dynamodb:PartiQLUpdate
+              - dynamodb:PartiQLDelete
+            Resource: !GetAtt PaymentTable.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Events:
+        PaymentEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern:
+              detail-type:
+              - DeliveryEstimated
+              - ItemReturned
+            DeadLetterConfig:
+              Type: SQS
+
+  ### Customer
+
+  CustomerTable: # customerId, name, address (single field for simplicity, includes zip code, town, and state/country), email
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "customerId"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "customerId"
+          KeyType: "HASH"
+
+  CustomerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: customer/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          CUSTOMER_TABLE: !Ref CustomerTable
+          EVENT_BUS: !Ref AppEventBus
+      Layers:
+        - !Ref HelpersLayer
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+            Resource: !GetAtt CustomerTable.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Events:
+        CustomerEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern:
+              detail-type:
+              - ItemDescribed
+            DeadLetterConfig:
+              Type: SQS
+
+  ### Delivery
+
+  MyPlaceIndex:
+    Type: AWS::Location::PlaceIndex
+    Properties: 
+      IndexName: !Sub my-place-index-${AWS::StackName}
+      DataSource: Esri
+      PricingPlan: RequestBasedUsage
+
+  MyRouteCalculator:
+    Type: AWS::Location::RouteCalculator
+    Properties: 
+      CalculatorName: !Sub my-route-calculator-${AWS::StackName}
+      DataSource: Esri
+      PricingPlan: RequestBasedUsage
+  
+  DeliveryTable: # customerId, orderId, address, status (CREATED, DELIVERING, DELIVERED, CANCELED)
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: 
+        - AttributeName: "customerId"
+          AttributeType: "S"
+        - AttributeName: "orderId"
+          AttributeType: "S"
+      KeySchema: 
+        - AttributeName: "customerId"
+          KeyType: "HASH"
+        - AttributeName: "orderId" # Timestamp with ms precision
+          KeyType: "RANGE"
+
+  DeliveryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: delivery/
+      Handler: app.lambdaHandler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          PLACE_INDEX: !Ref MyPlaceIndex
+          ROUTE_CALCULATOR: !Ref MyRouteCalculator
+          DELIVERY_TABLE: !Ref DeliveryTable
+          EVENT_BUS: !Ref AppEventBus
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+              - dynamodb:PartiQLInsert
+              - dynamodb:PartiQLUpdate
+              - dynamodb:PartiQLDelete
+            Resource: !GetAtt DeliveryTable.Arn
+          - Effect: Allow
+            Action:
+              - geo:SearchPlaceIndexForText
+            Resource: !GetAtt MyPlaceIndex.Arn
+          - Effect: Allow
+            Action:
+              - geo:CalculateRoute 
+            Resource: !GetAtt MyRouteCalculator.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Layers:
+        - !Ref HelpersLayer
+      Events:
+        DeliveryEvent:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref AppEventBus
+            Pattern:
+              detail-type:
+              - CustomerDescribed
+              - ItemRemoved
+              - Delivered
+              - DeliveryCanceled
+            DeadLetterConfig:
+              Type: SQS
+
+Outputs:
+
+  EventStoreTable:
+    Description: "Event Store Table"
+    Value: !Ref EventStoreTable
+  InventoryTable:
+    Description: "Inventory Table"
+    Value: !Ref InventoryTable
+  PaymentTable:
+    Description: "Payment Table"
+    Value: !Ref PaymentTable
+  CustomerTable:
+    Description: "Customer Table"
+    Value: !Ref CustomerTable
+  DeliveryTable:
+    Description: "Delivery Table"
+    Value: !Ref DeliveryTable
+  OrderTable:
+    Description: "Order Table"
+    Value: !Ref OrderTable
+  OrderApi:
+    Description: "API Gateway endpoint URL for Order function"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/order/{action}/{customerId}/{what}"

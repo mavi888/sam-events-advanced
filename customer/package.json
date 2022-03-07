@@ -1,0 +1,14 @@
+{
+  "name": "customer",
+  "version": "1.0.0",
+  "description": "customer service",
+  "main": "app.js",
+  "repository": "https://github.com/",
+  "author": "Marcia Villalba",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.34.0",
+    "@aws-sdk/client-eventbridge": "^3.34.0",
+    "@aws-sdk/lib-dynamodb": "^3.34.0"
+  }
+}

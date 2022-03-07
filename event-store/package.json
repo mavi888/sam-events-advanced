@@ -1,0 +1,13 @@
+{
+  "name": "event-store",
+  "version": "1.0.0",
+  "description": "event store",
+  "main": "app.js",
+  "repository": "https://github.com/",
+  "author": "Marcia Villalba",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.34.0",
+    "@aws-sdk/lib-dynamodb": "^3.34.0"
+  }
+}

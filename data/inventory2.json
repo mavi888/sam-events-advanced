@@ -1,0 +1,8 @@
+{
+    "itemId": {"S": "item-2"},
+    "description": {"S": "Huge TV"},
+    "image": {"S": "s3://bucket/prefix/file.jpg"},
+    "price": {"N": "599.99"},
+    "available": {"N": "5"},
+    "reserved": {"N": "0"}
+}

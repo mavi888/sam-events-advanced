@@ -1,0 +1,8 @@
+[
+    {
+      "EventBusName": "AppEventBus-sam-events-advanced",
+      "Source": "Logistics",
+      "Detail": "{ \"customerId\": \"customer-1\", \"orderId\": \"2022-03-07T12:37:52.573Z\" }",
+      "DetailType": "DeliveryCanceled"
+    }
+  ]

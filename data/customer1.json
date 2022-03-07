@@ -1,0 +1,7 @@
+{
+    "customerId": {"S": "customer-1"},
+    "description": {"S": "Customer One"},
+    "name": {"S": "Buckingham Palace"},
+    "email": {"S": "someone@example.net"},
+    "address": {"S": "London SW1A 1AA, UK"}
+}

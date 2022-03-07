@@ -1,0 +1,8 @@
+{
+    "itemId": {"S": "item-3"},
+    "description": {"S": "Bass-Heavy Headphones"},
+    "image": {"S": "s3://bucket/prefix/file.jpg"},
+    "price": {"N": "199.99"},
+    "available": {"N": "100"},
+    "reserved": {"N": "0"}
+}

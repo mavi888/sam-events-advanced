@@ -1,0 +1,7 @@
+{
+    "customerId": {"S": "customer-2"},
+    "description": {"S": "Customer Two"},
+    "name": {"S": "British Museum"},
+    "email": {"S": "someone@example.net"},
+    "address": {"S": "Great Russell St, London WC1B 3DG, UK"}
+}

@@ -8,17 +8,22 @@ _AWS Services used_: AWS EventBridge, AWS Lambda, AWS DynamoDB, Amazon Location 
 
 In this demo you will see:
 
--
+- How to build an event-driven application using Amazon EventBridge and infrastructure as code
+- How to add a central logging for all your events
+- How to use PartiQL for storing data in DynamoDB
+- How to use Lambda Layers for code that is used in multiple microservices.
 
-This demo is part of a video posted in FooBar Serverless channel. You can check the video to see the whole demo.
+This demo is part of a video posted in FooBar Serverless channel. You can check the videos to see the whole demo.
 
 Important: this application uses various AWS services and there are costs associated with these services after the Free Tier usage - please see the AWS Pricing page for details. You are responsible for any AWS costs incurred. No warranty is implied in this example.
 
 ## Application Architecture
 
-TODO
+![Basic Arquitecture](./diagrams/architecture.png)
 
-## Services
+See the flow for all the events in the [events table](event-table.md).
+
+### Services
 
 - Customer - customer information such as name, address, and email
 - Order - to create an order orchestrating all other services, and describe the order status
@@ -30,12 +35,12 @@ Only for the event-driven scenario:
 
 - Event Store - to store all events
 
-## API Operations
+### API Operations
 
-On the Amazon API Gateway HTTP API endpoint:
+To trigger the create order flow, use this url:
 
 ```
-GET /order/create/{customerId}/{itemId} # To start an event-driven order creation
+GET /order/create/{customerId}/{itemId} #
 ```
 
 ## Get started with this project
@@ -80,26 +85,44 @@ Load the sample data in the `data` directory, use the same stack name you entere
 
 Create an order for `customer-1` buing `item-1` calling the Create Order API:
 
-curl -i https://a1b2c3d4e5.execute-api.eu-west-1.amazonaws.com/order/create/customer-1/item-1
+```
+curl -i <API Gateway URL>/order/create/customer-1/item-1
+```
 
 From the output of the command, write down the `customerId` and the `orderId`, they together identify a specific order.
 
-To learn how the service was designed using events, see [Event design table](event-table.md)
+## Useful information about the different services of the application
 
-## Payment successful
+### Inventory service
+
+#### InventoryTable content
+
+Look at the **Items** of the `InventoryTable` in the [DynamoDB console](https://console.aws.amazon.com/dynamodb). The actual name of the table will be in the form `<stack-name>-InventoryTable-<unique-ID>`. Note that the table is empty before the first order is created.
+
+If the order was created successfully, you should have an item with status `DELIVERING`.
+
+### Payments service
+
+#### Payment successful
 
 In case you find the PaymentMade event, the next events are:
 
 - ItemRemoved (from the Inventory service)
 - DeliveryStarted (from the Delivery Service)
 
-## InventoryTable content
+#### Payment failed
 
-Look at the **Items** of the `InventoryTable` in the [DynamoDB console](https://console.aws.amazon.com/dynamodb). The actual name of the table will be in the form `<stack-name>-InventoryTable-<unique-ID>`. Note that the table is empty before the first order is created.
+To force a failed payment, you can increase the value of the `PAYMENT_FAIL_PROBABILITY` environment variable in the configuration of the `PaymentFunction` (for example, to `0.9` or `1.0`). You can change the value directly in the Lambda console or in the SAM template (and deploy).
 
-If the order was created successfully, you should have an item with status `DELIVERING`.
+In case you find the `PaymentFailed` event, the next events are:
 
-## Completing order delivery
+- `ItemUnreserved` (from the Inventory service)
+
+In the `InventoryTable`, the order has status `PAYMENT_FAILED`.
+
+### Delivery service
+
+#### Completing order delivery
 
 To move forward when a delivery starts, you need to send an event to report if the delivery has been successful (`Delivered`) or not (`DeliveryCancel`).
 
@@ -120,7 +143,7 @@ In the [EventBridge console](https://console.aws.amazon.com/events/), choose **E
 
 After you **Send** the event, new events will appear.
 
-#### Delivered order
+##### Delivered order
 
 If you send the `Delivered` event, these are the new events in the logs:
 
@@ -140,17 +163,7 @@ If you send the `DeliveryCanceled` event, these are the new events in the logs:
 - `ItemReturned` (from the Inventory service)
 - `PaymentCanceled` (from the Payment service)
 
-## Payment failed
-
-To force a failed payment, you can increase the value of the `PAYMENT_FAIL_PROBABILITY` environment variable in the configuration of the `PaymentFunction` (for example, to `0.9` or `1.0`). You can change the value directly in the Lambda console or in the SAM template (and deploy).
-
-In case you find the `PaymentFailed` event, the next events are:
-
-- `ItemUnreserved` (from the Inventory service)
-
-In the `InventoryTable`, the order has status `PAYMENT_FAILED`.
-
-## Event Store / Event Sourcing
+### Event Store / Event Sourcing - Central logging of events
 
 The `EventStoreFunction` is storing all events in CloudWatch Logs and in the `EventStoreTable` in DynamoDB.
 
@@ -161,7 +174,7 @@ The `EventStoreTable` has a primary ket composed by:
 - `eventSource` : the source of the event
 - `eventDetail` : the full JSON of the event as a string
 
-### EventStoreFunction logs
+#### EventStoreFunction logs
 
 Look at the logs of the `EventStoreFunction` Lambda function. The actual name of the function will be in the form `<stack-name>-EventStoreFunction-<unique-ID>`. To find the logs, in the [Lambda console](https://console.aws.amazon.com/lambda/), select the function, then the **Monitor** tab, then choose **View logs in CloudWatch**. Note that there are no logs before the first execution of a function.
 
@@ -178,7 +191,9 @@ In order, the events for the order you created are:
 
 The Payment service fails with a probability passed to the Lambda `PaymentFunction` in an environment variable (`PAYMENT_FAIL_PROBABILITY`) that by default has value `0.2` (20% probability to fail). You can edit the variable in the Lambda console.
 
-## Links related to this code
+## Related video tutorials
 
-- Video with more details:
-- Launch blog post:
+- [Get started with AMAZON EVENTBRIDGE, build your SERVERLESS event-driven app with AWS SAM](https://youtu.be/c493KFaWteg)
+- [What to DO when an EVENT DELIVERY FAILS? - Dead Letter Queues with Amazon EventBridge](https://youtu.be/heJbgToU04c)
+- [How to DESIGN EVENT-DRIVEN applications! The best method for production applications!](https://youtu.be/LaxH8GS8l3Q)
+- [Centralize all your EVENTS of your EVENT-DRIVEN applications - Amazon EventBridge](https://youtu.be/DGijNsXoMgke)

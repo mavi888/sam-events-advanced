@@ -42,8 +42,8 @@ bower_components
 build/Release
 
 # Dependency directories
-node_modules/
-! helpers-layer/nodejs/node_module #Except for this folder
+node_modules/*
+!helpers-layer/nodejs/node_module/* #Except for this folder
 jspm_packages/
 
 # TypeScript v1 declaration files
@@ -109,3 +109,12 @@ dist
 .tern-port
 .DS_Store
 .vscode/settings.json
+helpers-layer/nodejs/node_modules/dynamoHandler/node_modules/.package-lock.json
+helpers-layer/nodejs/node_modules/dynamoHandler/package-lock.json
+helpers-layer/nodejs/node_modules/dynamoHandler/node_modules/*
+helpers-layer/nodejs/node_modules/eventHandler/package-lock.json
+helpers-layer/nodejs/node_modules/eventHandler/node_modules/.package-lock.json
+helpers-layer/nodejs/node_modules/eventHandler/node_modules/*
+helpers-layer/nodejs/node_modules/locationHandler/package-lock.json
+helpers-layer/nodejs/node_modules/locationHandler/node_modules/.package-lock.json
+helpers-layer/nodejs/node_modules/locationHandler/node_modules/*

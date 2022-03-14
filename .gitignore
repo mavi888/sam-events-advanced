@@ -43,6 +43,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+! helpers-layer/nodejs/node_module #Except for this folder
 jspm_packages/
 
 # TypeScript v1 declaration files

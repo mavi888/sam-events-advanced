@@ -1,6 +1,8 @@
 const eventHandler = require('eventHandler');
 const dynamoHandler = require('dynamoHandler');
 
+const { v4: uuidv4 } = require('uuid');
+
 const EVENT_SOURCE="Order";
 const EVENT_BUS = process.env.EVENT_BUS;
 const ORDER_TABLE = process.env.ORDER_TABLE;
@@ -74,6 +76,8 @@ exports.lambdaHandler = async (event, context) => {
 
 async function createOrder(customerId, itemId) {
     console.log('create order')
+    console.log('testing uuid ' + uuidv4());
+    
     const orderId = new Date().toISOString();
     const order = {
         customerId,

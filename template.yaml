@@ -1,6 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
+Parameters:
+  DeliveryServiceURL:
+    Type: String
+
 Globals:
   Function:
     Timeout: 10
@@ -64,6 +68,15 @@ Resources:
       CompatibleRuntimes:
         - nodejs14.x
 
+  UuidLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SAM-Events-Advanced-Uuid
+      Description: Layer that contains one version of UUID library
+      LicenseInfo: 'Available under the MIT license.'
+      ContentUri: ./uuid-layer
+      CompatibleRuntimes:
+        - nodejs14.x
   ### Order
 
   OrderTable: # customerId, orderId, status (CREATED, RESERVED, PAID, DELIVERING, DELIVERED, CANCELED), itemId, itemPrice, deliveryPrice, totalPrice, paymentId, deliveryAddress, orderDate (timestamp), updateDate (timestamp)
@@ -89,6 +102,7 @@ Resources:
       Runtime: nodejs14.x
       Layers:
         - !Ref HelpersLayer
+        - !Ref UuidLayer
       Environment:
         Variables:
           ORDER_TABLE: !Ref OrderTable
@@ -360,8 +374,118 @@ Resources:
               - ItemRemoved
               - Delivered
               - DeliveryCanceled
-            DeadLetterConfig:
-              Type: SQS
+
+### API Destination for the delivery endpoint
+  DeliveryConnection:
+    Type: AWS::Events::Connection
+    Properties:
+      AuthorizationType: API_KEY
+      Description: 'Connection with an API key'
+      AuthParameters:
+        ApiKeyAuthParameters:
+          ApiKeyName: ApiKeyName
+          ApiKeyValue: DeliveryServiceApiKeyValue
+
+  DeliveryApiDestination:
+    Type: AWS::Events::ApiDestination
+    Properties:
+      Name: 'DeliveryApiDestination'
+      ConnectionArn: !GetAtt DeliveryConnection.Arn
+      InvocationEndpoint: !Ref DeliveryServiceURL
+      HttpMethod: POST
+      InvocationRateLimitPerSecond: 10
+
+  DeliveryEventRule: 
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "Delivery Service EventRule"
+      EventBusName: !Ref AppEventBus
+      EventPattern: 
+        detail-type:
+          - DeliveryMarkedAsStarted
+      Targets: 
+        - Arn: !GetAtt DeliveryApiDestination.Arn
+          RoleArn: !GetAtt DeliveryEBTargetRole.Arn
+          Id: "DeliveryApiDestination"
+          DeadLetterConfig:
+            Arn: !GetAtt DeliveryServiceDLQueue.Arn
+          RetryPolicy:
+            MaximumEventAgeInSeconds: 60
+            MaximumRetryAttempts: 4
+
+
+  DeliveryEBTargetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AllowAPIdestinationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'events:InvokeApiDestination'
+                Resource: !GetAtt DeliveryApiDestination.Arn
+
+### DLQ for the API Destination
+  DeliveryServiceDLQueue:
+    Type: AWS::SQS::Queue
+  
+  DeliveryServiceDLQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: 
+        - !Ref DeliveryServiceDLQueue
+      PolicyDocument:
+        Statement: 
+          - Effect: Allow
+            Action: 'sqs:SendMessage'
+            Resource: !GetAtt DeliveryServiceDLQueue.Arn
+            Principal:
+              Service: events.amazonaws.com
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt DeliveryEventRule.Arn
+
+  DeliveryDLQFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: delivery/
+      Handler: app.deliveryDLQHandler
+      Runtime: nodejs14.x
+      Layers:
+        - !Ref HelpersLayer
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:PartiQLSelect
+              - dynamodb:PartiQLInsert
+              - dynamodb:PartiQLUpdate
+              - dynamodb:PartiQLDelete
+            Resource: !GetAtt DeliveryTable.Arn
+          - Effect: Allow
+            Action:
+              - events:PutEvents
+            Resource: !GetAtt AppEventBus.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref AppEventBus
+          DELIVERY_TABLE: !Ref DeliveryTable
+      Events:
+        DQLSQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt DeliveryServiceDLQueue.Arn
+            BatchSize: 1
 
 Outputs:
 
@@ -385,4 +509,4 @@ Outputs:
     Value: !Ref OrderTable
   OrderApi:
     Description: "API Gateway endpoint URL for Order function"
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/order/{action}/{customerId}/{what}"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/order/create/{customerId}/{itemId}"

@@ -32,8 +32,8 @@ exports.lambdaHandler = async (event, context) => {
                     order, "delivery", EVENT_BUS, EVENT_SOURCE);
                 break;
             case 'ItemRemoved':
-                await eventHandler.processResult(await startDelivery(order.customerId, order.orderId, order.customer.address),
-                    "DeliveryStarted", "ErrorDeliveryStarted",
+                await eventHandler.processResult(await markDeliveryAsStarted(order.customerId, order.orderId, order.customer.address),
+                    "DeliveryMarkedAsStarted", "ErrorMarkDeliveryAsStarted",
                     order, "delivery", EVENT_BUS, EVENT_SOURCE);
                 break;
             case 'Delivered':
@@ -52,6 +52,20 @@ exports.lambdaHandler = async (event, context) => {
     }
 };
 
+exports.deliveryDLQHandler = async (event, context) => {
+    console.log('Delivery DLQ function')
+    console.log(event);
+
+    const body = JSON.parse(event.Records[0].body);
+    const order = body.detail;
+
+    console.log(order);
+    await eventHandler.processResult(await cancelDelivery(order.customerId, order.orderId),
+        "DeliveryWasCanceled", "ErrorDeliveryWasCanceled",
+        order, "delivery", EVENT_BUS, EVENT_SOURCE);
+    return;
+}
+
 async function getRouteSummaryFor(address) {
     const route = await locationHandler.getRouteForAddress(address, startAddressPlace, PLACE_INDEX, ROUTE_CALCULATOR);
     const routeSummary = route.Summary;
@@ -64,7 +78,7 @@ async function estimateDelivery(address) {
     return [delivery];
 }
 
-async function startDelivery(customerId, orderId, address) {
+async function markDeliveryAsStarted(customerId, orderId, address) {
 
     const deliveryStatus = 'DELIVERING';
     const routeSummary = await getRouteSummaryFor(address);

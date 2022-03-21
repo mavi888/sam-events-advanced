@@ -118,3 +118,6 @@ helpers-layer/nodejs/node_modules/eventHandler/node_modules/*
 helpers-layer/nodejs/node_modules/locationHandler/package-lock.json
 helpers-layer/nodejs/node_modules/locationHandler/node_modules/.package-lock.json
 helpers-layer/nodejs/node_modules/locationHandler/node_modules/*
+uuid-layer/nodejs/package-lock.json
+uuid-layer/nodejs/node_modules/.package-lock.json
+uuid-layer/nodejs/node_modules/*

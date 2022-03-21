@@ -12,6 +12,8 @@ In this demo you will see:
 - How to add a central logging for all your events
 - How to use PartiQL for storing data in DynamoDB
 - How to use Lambda Layers for code that is used in multiple microservices.
+- How to use API Destinations
+- How to add Dead Letter Queues to EventBridge
 
 This demo is part of a video posted in FooBar Serverless channel. You can check the videos to see the whole demo.
 
@@ -60,6 +62,8 @@ sam build -p # Parallel build
 
 sam deploy -g # Guided deployments
 ```
+
+When deploying for the first time you will need to input an URL. This URL simulates the third party delivery service. For faking this URL you can use the site [Webhook.site](https://webhook.site/). If you want to see the Dead Letter queue in action, you need to input an URL that returns an error (or a non existant URL).
 
 Next times, when you update the code, you can build and deploy with:
 
@@ -197,3 +201,6 @@ The Payment service fails with a probability passed to the Lambda `PaymentFuncti
 - [What to DO when an EVENT DELIVERY FAILS? - Dead Letter Queues with Amazon EventBridge](https://youtu.be/heJbgToU04c)
 - [How to DESIGN EVENT-DRIVEN applications! The best method for production applications!](https://youtu.be/LaxH8GS8l3Q)
 - [Centralize all your EVENTS of your EVENT-DRIVEN applications - Amazon EventBridge](https://youtu.be/DGijNsXoMgke)
+- [Build Event-driven applications using 3rd party APIs - Amazon EventBridge API Destinations](https://youtu.be/tyNoiravCNw)
+- [Build Event-driven applications using 3rd party APIs - Amazon EventBridge API Destinations](https://youtu.be/heJbgToU04c)
+- Lambda Layers video - Soon...
